@@ -1,93 +1,96 @@
 import streamlit as st
-import numpy as np
-import matplotlib.pyplot as plt
-
-
-# For older pandas versions (e.g., < 1.3.0)
 import pandas as pd
-import subprocess
+import matplotlib.pyplot as plt
 import os
 
-
-# Initialize git repository
-if not os.path.exists('.git'):
-    subprocess.run(['git', 'init'], check=True)
-    subprocess.run(['git', 'config', 'user.name', 'Your Name'], check=True)
-    subprocess.run(['git', 'config', 'user.email', 'your.email@example.com'], check=True)
-    subprocess.run(['git', 'add', '.'], check=True)
-    subprocess.run(['git', 'commit', '-m', 'Initial commit'], check=True)
-    subprocess.run(['git', 'branch', '-M', 'main'], check=True)
-    # Replace with your repo URL
-    subprocess.run(['git', 'remote', 'add', 'origin', 'https://github.com/username/repo.git'], check=True)
-    subprocess.run(['git', 'push', '-u', 'origin', 'main'], check=True)
-# load data set
-df = pd.read_csv(
-    r"C:\Users\VICTOR\cleaned_loan_data.csv",
-    encoding="utf-8"
+# -----------------------------
+# App Config
+# -----------------------------
+st.set_page_config(
+    page_title="Bank Customer Loan Analysis",
+    layout="wide"
 )
 
-# title block
-st.title('Bank Customer Loan Analysis')
-st.write('interactive dashboard to analyze loans and risk')
+st.title("🏦 Bank Customer Loan Analysis")
+st.write("Interactive dashboard to analyze loan approvals and credit risk")
 
-###
-df['Loan_Status']=df['Loan_Status'].str.strip().str.lower()
-df['Approved_loan']=(df['Loan_Status']=='y').astype(int)
+# -----------------------------
+# Load Data (Same Repo)
+# -----------------------------
+@st.cache_data
+def load_data():
+    file_path = os.path.join(os.path.dirname(__file__), "cleaned_loan_data.csv")
+    return pd.read_csv(file_path)
 
-total_approved_loan = df['Approved_loan'].sum()
-## income level
-def incomelevel(CoapplicantIncome):
-    if 	CoapplicantIncome <5000.0:
-        return 'low'
+df = load_data()
 
-    elif CoapplicantIncome <1000.0:
+# -----------------------------
+# Data Cleaning & Features
+# -----------------------------
+df["Loan_Status"] = df["Loan_Status"].str.strip().str.lower()
+df["Approved_loan"] = (df["Loan_Status"] == "y").astype(int)
+
+# Income level classification
+def income_level(co_income):
+    if co_income < 1000:
+        return "Low"
+    elif co_income < 5000:
         return "Mid"
-
     else:
         return "High"
-df["incomelevel"] = df['CoapplicantIncome'].apply(incomelevel)
 
-# display matrix
-st.metric(label="Total Approved Loan", value=total_approved_loan)
-st.metric('Total people owing', df['is_owning'].sum())
-st.metric('Default Rate', f"{df['Approved_loan'].mean():.2%}")
+df["income_level"] = df["CoapplicantIncome"].apply(income_level)
 
+# Credit history bands (quantile-based)
+low_q = df["Credit_History"].quantile(0.33)
+high_q = df["Credit_History"].quantile(0.66)
 
-# create bands
-# potential risk
-low = df['Credit_History'].quantile(0.00)
-high = df['Credit_History'].quantile(1.00)
-
-def credit_bands(Credit_History):
-    if Credit_History<=low:
-        return 'low'
-
-    elif Credit_History<=high:
-        return 'mid'
-
+def credit_band(value):
+    if value <= low_q:
+        return "Low"
+    elif value <= high_q:
+        return "Mid"
     else:
-        return'High'
+        return "High"
 
-df['credit_bands']=df['Credit_History'].apply(credit_bands)
+df["credit_band"] = df["Credit_History"].apply(credit_band)
 
-# bar chart
-credit_count = df['credit_bands'].value_counts().reset_index()
-st.subheader('Credit History Bands')
-#st.bar_chart(credit_count, x='index', y='credit_bands')
-st.bar_chart(credit_count, x='credit_bands', y='count')
-Loan_Amount_Term = df['Loan_Amount_Term'].value_counts()
+# -----------------------------
+# Key Metrics
+# -----------------------------
+col1, col2, col3 = st.columns(3)
 
-# histogram
+col1.metric("Total Approved Loans", int(df["Approved_loan"].sum()))
+col2.metric("Total People Owing", int(df["is_owning"].sum()))
+col3.metric("Approval Rate", f"{df['Approved_loan'].mean():.2%}")
 
+# -----------------------------
+# Credit Band Distribution
+# -----------------------------
+st.subheader("📊 Credit History Bands")
+
+credit_counts = (
+    df["credit_band"]
+    .value_counts()
+    .reset_index()
+)
+
+credit_counts.columns = ["Credit Band", "Count"]
+
+st.bar_chart(
+    credit_counts,
+    x="Credit Band",
+    y="Count"
+)
+
+# -----------------------------
+# Loan Amount Distribution
+# -----------------------------
+st.subheader("📈 Loan Amount Distribution")
 
 fig, ax = plt.subplots()
-ax.hist(df['LoanAmount'], bins=20)
+ax.hist(df["LoanAmount"].dropna(), bins=20)
 ax.set_xlabel("Loan Amount")
 ax.set_ylabel("Frequency")
 
 st.pyplot(fig)
-
-
-
-
-
